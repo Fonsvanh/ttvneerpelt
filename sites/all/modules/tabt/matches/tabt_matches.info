@@ -1,0 +1,14 @@
+name = TabT Matches
+description = Get matches from the TabT-site.
+core = 7.x
+php = 5.3
+package = TabT
+dependencies[] = tabt
+configure = admin/config/tabt/matches
+files[] = includes/tabt_matches.tabtmatch.inc
+; Information added by Drupal.org packaging script on 2015-11-30
+version = "7.x-1.1+10-dev"
+core = "7.x"
+project = "tabt"
+datestamp = "1448843941"
+

@@ -1,0 +1,189 @@
+<?php
+/**
+ * @file
+ * Install the TabT Module;
+ */
+
+/**
+ * Implements hook_schema().
+ */
+function tabt_schema() {
+  $schema['cache_tabt'] = get_base_schema_cache();
+  $schema['cache_tabt']['description'] = 'Cache table for the TabT module to store already fetched data.';
+  
+  $schema['cache_tabt_mru'] = get_base_schema_cache();
+  $schema['cache_tabt_mru']['fields']['last_used'] = array(
+    'description' => 'A Unix timestamp indicating when the cache entry was last used.',
+    'type' => 'int',
+    'not null' => TRUE,
+    'default' => 0,
+  );
+  $schema['cache_tabt_mru']['description'] = 'MRU Cache for the TabT module to store large data.';
+  return $schema;
+}
+
+/**
+ * Implements hook_uninstall().
+ */
+function tabt_uninstall() {
+  variable_del('tabt_club_id');
+  variable_del('tabt_club_name');
+  variable_del('tabt_site');
+  variable_del('tabt_locale');
+  variable_del('tabt_caching');
+  variable_del('tabt_mru_caching');
+  variable_del('tabt_mru_caching_max');
+  variable_del('tabt_credentials_user');
+  variable_del('tabt_credentials_password');
+  variable_del('tabt_teams');
+  variable_del('tabt_teams_titles');
+  variable_del('tabt_teamspage');
+  variable_del('tabt_linked_to_club');
+}
+
+/**
+ * Create Cache-table.
+ */
+function tabt_update_7000() {
+  db_create_table('cache_tabt', system_schema_cache_7054());
+}
+
+/**
+ * Convert teamaliases- and teamtitles-arrays.
+ */
+function tabt_update_7001() {
+  $aliases = variable_get('tabt_teams');
+  $titles = variable_get('tabt_teams_titles', array());
+  variable_del('tabt_teams');
+  variable_del('tabt_teams_titles');
+  $teams = tabt_get_all_teams();
+  $values = array();
+  foreach ($teams->TeamEntries as $team) {
+    $id = $team->TeamId;
+    if ((isset($aliases[$id]) && isset($team->Season)) || isset($titles[$id])) {
+      $object = new stdClass();
+      if (isset($aliases[$id]) && isset($team->Season)) {
+        $object->Alias = $aliases[$id];
+        $object->Season = $team->Season;
+      }
+      if (isset($titles[$id])) {
+        $object->Title = $titles[$id];
+      }
+      $values[$id] = $object;
+    }
+  }
+  variable_set('tabt_teams', $values);
+}
+
+/**
+ * Implements hook_requirements().
+ */
+function tabt_requirements($phase) {
+  // Ensure translations don't break at install time
+  $t = get_t();
+  $result = array();
+  $soaprequirement['title'] = $t('PHP SOAP extension');
+  $soaprequirement['description'] = $t('The PHP SOAP extension must be enabled to use the web service client SOAP support module.');
+  if (extension_loaded('soap')) {
+    $soaprequirement['value'] = $t('Enabled');
+    $soaprequirement['severity'] = REQUIREMENT_OK;
+  }
+  else {
+    $soaprequirement['value'] = $t('Missing');
+    $soaprequirement['severity'] = REQUIREMENT_ERROR;
+  }
+  $result['php_soap'] = $soaprequirement;
+  if ($phase == 'runtime') {
+    $test = _tabt_test();
+    $tabtrequirement['title'] = t('TabT-API Version');
+    if (isset($test->ApiVersion)) {
+      $versionok = TRUE;
+      $version = explode('.', $test->ApiVersion);
+      $reqversion = explode('.', TABT_REQ_VERSION);
+      for ($i = 0; $i < count($reqversion); $i++) {
+        if (isset($version[$i])) {
+          if ($version[$i] < $reqversion[$i]) {
+            $versionok = FALSE;
+            break;
+          }
+        }
+        elseif ($reqversion[$i] > 0) {
+          $versionok = FALSE;
+          break;
+        }
+      }
+      $tabtrequirement['value'] = $test->ApiVersion;
+      if ($versionok) {
+        $tabtrequirement['severity'] = REQUIREMENT_OK;
+      }
+      else {
+        $tabtrequirement['description'] = $t('The TabT-API you are using is too old. TabT requires at least API version %version.', array('%version' => TABT_REQ_VERSION));
+        $tabtrequirement['severity'] = REQUIREMENT_ERROR;
+      }
+      $result['tabt_api'] = $tabtrequirement;
+    }
+    else {
+      $tabtrequirement['value'] = t('N/A');
+      $tabtrequirement['description'] = $t('Unable to reach the TabT-API. Did you set the configuration correctly?');
+      $tabtrequirement['severity'] = REQUIREMENT_ERROR;
+    }
+  }
+  return $result;
+}
+
+/**
+ * Create MRU Cache-table.
+ */
+function tabt_update_7002() {
+  $schema = tabt_schema();
+  db_create_table('cache_tabt_mru', $schema['cache_tabt_mru']);
+}
+
+/**
+ * Get the base cache schema.
+ * This schema is based on system_schema_cache_7054
+ */
+
+function get_base_schema_cache() {
+  return array(
+    'description' => 'Generic cache table for caching things not separated out into their own tables. Contributed modules may also use this to store cached items.',
+    'fields' => array(
+      'cid' => array(
+        'description' => 'Primary Key: Unique cache ID.',
+        'type' => 'varchar',
+        'length' => 255,
+        'not null' => TRUE,
+        'default' => '',
+      ),
+      'data' => array(
+        'description' => 'A collection of data to cache.',
+        'type' => 'blob',
+        'not null' => FALSE,
+        'size' => 'big',
+      ),
+      'expire' => array(
+        'description' => 'A Unix timestamp indicating when the cache entry should expire, or 0 for never.',
+        'type' => 'int',
+        'not null' => TRUE,
+        'default' => 0,
+      ),
+      'created' => array(
+        'description' => 'A Unix timestamp indicating when the cache entry was created.',
+        'type' => 'int',
+        'not null' => TRUE,
+        'default' => 0,
+      ),
+      'serialized' => array(
+        'description' => 'A flag to indicate whether content is serialized (1) or not (0).',
+        'type' => 'int',
+        'size' => 'small',
+        'not null' => TRUE,
+        'default' => 0,
+      ),
+    ),
+    'indexes' => array(
+      'expire' => array('expire'),
+    ),
+    'primary key' => array('cid'),
+  );
+}
