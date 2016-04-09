@@ -83,7 +83,7 @@ function _tabt_matches_load_results($match) {
         break;
       case 'week':
         // The first thing we need to get, is the weekname.
-        if (strpos($line, '<tr><td class="Interclubs_Subtitle">Week&nbsp;') !== FALSE) {
+        if (strpos($line, '<tr><td class="interclubs_subtitle">Week&nbsp;') !== FALSE) {
           $current_data = 'start';
           if (preg_match('/\<OPTION value="(.|..)" SELECTED>(.|..)\<\/OPTION>/', $line, $matches)) {
             $match->WeekName = $matches[1];
@@ -93,7 +93,7 @@ function _tabt_matches_load_results($match) {
       case 'start':
         // Let's wait with processing untill we get the title of the
         // match-info.
-        if (strpos($line, '<tr><td class="Interclubs_Subtitle">Match') !== FALSE) {
+        if (strpos($line, '<tr><td class="interclubs_subtitle">Match') !== FALSE) {
           $current_data = 'info';
           $current_data2 = 'start';
           $data_list = array();
